@@ -1,0 +1,20 @@
+/dts-v1/;
+/plugin/;
+
+/ {
+    compatible = "brcm,bcm2835"; 
+
+    fragment@0 {
+        target = <&gpios>;
+        __overlay__ {
+            dht11 {
+                compatible = "dht11";   
+                gpios = <&gpio 4 0>;
+            };
+        };
+
+        __overrides__ {
+            gpio_number = <&dht11>,"gpio:1";
+        };
+    };
+};
