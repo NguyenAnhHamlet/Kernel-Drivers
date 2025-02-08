@@ -1,0 +1,1 @@
+savedcmd_/home/anhnguyen/driver/linux/drivers/dht11/dht11.ko := ld -r -EL  -maarch64elf -z noexecstack --no-warn-rwx-segments --build-id=sha1  -T scripts/module.lds -o /home/anhnguyen/driver/linux/drivers/dht11/dht11.ko /home/anhnguyen/driver/linux/drivers/dht11/dht11.o /home/anhnguyen/driver/linux/drivers/dht11/dht11.mod.o

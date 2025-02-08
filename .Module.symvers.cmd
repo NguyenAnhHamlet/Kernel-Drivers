@@ -1,0 +1,1 @@
+savedcmd_/home/anhnguyen/driver/linux/drivers/dht11/Module.symvers :=  scripts/mod/modpost -M -m -a      -o /home/anhnguyen/driver/linux/drivers/dht11/Module.symvers -T /home/anhnguyen/driver/linux/drivers/dht11/modules.order -i Module.symvers -e 
