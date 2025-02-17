@@ -10,9 +10,11 @@ clean:
 	make -C $(KDIR) M=$(shell pwd) clean
 
 install: 
-	sudo cp dht11.dtb /boot/firmware/overlays
-	sudo mkdir -p /lib/modules/$(shell uname -r)/kernel/drivers/dht11
-	sudo cp dht11.ko /lib/modules/$(shell uname -r)/kernel/drivers/dht11
+	sudo cp dht11.dtbo /boot/firmware/overlays
+	sudo cp dht11.ko /lib/modules/$(shell uname -r)/kernel/drivers/
 
 load:
-	sudo modprobe dht11
+	sudo insmod dht11.ko
+
+unload:
+	sudo rmmod dht11

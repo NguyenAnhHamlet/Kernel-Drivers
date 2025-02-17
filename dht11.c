@@ -13,6 +13,8 @@
 #include <linux/module.h> 
 #include <linux/of_gpio.h>
 
+#define GPIO_21 (21)
+
 static DECLARE_WAIT_QUEUE_HEAD(dht11_gpio_wait_queue);
 static struct task_struct *dht11_thread;
 
@@ -41,12 +43,19 @@ static int dht11_init(dht11_ctx* ctx);
 static int dht11_read(dht11_ctx* ctx);
 static int dht11_reading_thread(void* data);
 static irqreturn_t dht11_get_toggle_time(int irq, void *dev_id);
+static void dht11_set_context_running(dht11_ctx* ctx);
+
+static void dht11_set_context_running(dht11_ctx* ctx)
+{
+    ctx->running = 1;
+}
 
 static int read_gpio_p_dht11(dht11_ctx* ctx)
 {
     struct device_node *np;
+    u32 gpios[3];
 
-    np = of_find_node_by_name(NULL, "dht11");
+    np = of_find_compatible_node(NULL, NULL, "dht11,sensor");
 
     if (!np) 
     {
@@ -54,13 +63,23 @@ static int read_gpio_p_dht11(dht11_ctx* ctx)
         return -ENODEV;
     }
 
-    ctx->gpio_p = of_get_named_gpio(np, "gpios", 0);
+    if(of_property_read_u32_array(np, "gpios", gpios, 2))
+    {
+        pr_err("DHT11: Failed to read GPIO number from device tree %d\n", ctx->gpio_p);
+        return -EINVAL;
+    }
+
+    ctx->gpio_p = gpios[1];
+
+    pr_err("PIN : %d", ctx->gpio_p);
 
     if (!gpio_is_valid(ctx->gpio_p))
     {
         pr_err("DHT11: dht11 gpio not found\n");
         return -EINVAL;
     }
+
+    pr_err("Pin number is: %d\n", ctx->gpio_p);
 
     return 0;
 }
@@ -94,20 +113,6 @@ static int dht11_check_err(dht11_ctx* ctx)
 
 static int dht11_init(dht11_ctx* ctx)
 {   
-    int ret = gpio_request(ctx->gpio_p, "dht11_gpio_p"); 
-    if (ret < 0) 
-    {
-        pr_err("Failed to request GPIO pin %d dht11\n", ctx->gpio_p);
-        return -1;
-    }
-
-    ret = gpio_direction_input(ctx->gpio_p);
-    if (ret < 0) {
-        pr_err("Failed to set GPIO direction dht11\n");
-        gpio_free(ctx->gpio_p);
-        return -1;
-    }
-
     // MCU sends out start signal by pulling down 
     // voltage of gpio pin for at least 18 ms
     // Here push it to 20 ms
@@ -185,6 +190,9 @@ static int dht11_read(dht11_ctx* ctx)
     ctx->humid_dec = convert_bin(data + 24);
     ctx->sum = convert_bin(data + 32);
 
+    pr_info("Data dht11 : temp: %d.%d, humid: %d.%d, sum: %d\n", 
+            ctx->temp_int, ctx->temp_dec, ctx->humid_int, ctx->humid_dec, ctx->sum);
+
     if(dht11_check_err(ctx) < 0)
     {
         pr_err("Error in data dht11\n");
@@ -247,31 +255,34 @@ static int dht11_reading_thread(void* data)
     dht11_ctx* ctx = (dht11_ctx* ) data;
 
     pr_info("Reading sensor dht11 data... dht11\n");
-    while(ctx->running)
+    while(ctx->running && !kthread_should_stop())
     {
         if(dht11_init(ctx) < 0)
         {
             pr_err("Failure init finale dht11\n");
-            return -1;
+            break;
         }
 
-        free_irq(ctx->irq_num, ctx);
+        if (ctx->irq_num > 0) 
+        {
+            free_irq(ctx->irq_num, ctx);
+        }
 
         ctx->irq_num = gpio_to_irq(ctx->gpio_p);
         if (ctx->irq_num < 0) 
         {
             pr_err("Failed to get IRQ number for GPIO %d dht11\n", ctx->gpio_p);
-            gpio_free(ctx->irq_num);
-            return 0;
+            gpio_free(ctx->gpio_p);
+            break;
         }
 
         int ret = request_irq(  ctx->irq_num, dht11_get_toggle_time,
                                 IRQF_TRIGGER_RISING ,
                                 "dht11_gpio_interrupt", (void*) ctx);
-        if(!ret)
+        if(ret < 0)
         {
-            pr_err("Failure creating interrupt dht11\n");
-            return -1;
+            pr_err("Failure creating interrupt dht11. Error: %d\n", ret);
+            break; 
         }
 
         if(dht11_read(ctx) < 0)
@@ -286,14 +297,30 @@ static int dht11_reading_thread(void* data)
             break;
     }
 
+    
+    free_irq(ctx->irq_num, ctx);
+    gpio_free(ctx->gpio_p);
+
+    pr_info("Exiting DHT11 reading thread...\n");
+
     return 0;
 }
 
 static int __init dht11_driver_init(void)
 {
+    dht11_set_context_running(&ctx);
+    
     if(read_gpio_p_dht11(&ctx) < 0)
     {
         pr_err("Failed to read gpio \n");
+        return -1;
+    }
+
+    pr_err("PIN : %d", ctx.gpio_p);
+    int ret = gpio_request(533, "dht11-pin"); 
+    if (ret < 0) 
+    {
+        pr_err("Failed to request GPIO pin %d dht11. Error: %d\n", ctx.gpio_p, ret);
         return -1;
     }
 
@@ -314,9 +341,6 @@ static void __exit dht11_driver_exit(void)
     ctx.running = 0;
     if (dht11_thread)
         kthread_stop(dht11_thread);
-
-    free_irq(ctx.irq_num, &ctx);
-    gpio_free(ctx.gpio_p);
 }
 
 module_init(dht11_driver_init);
