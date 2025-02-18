@@ -13,10 +13,8 @@
 #include <linux/module.h> 
 #include <linux/of_gpio.h>
 
-#define GPIO_21 (21)
-
 static DECLARE_WAIT_QUEUE_HEAD(dht11_gpio_wait_queue);
-static struct task_struct *dht11_thread;
+static struct task_struct *dht11_thread = NULL;
 
 typedef struct {
     unsigned int gpio_p;
@@ -32,6 +30,7 @@ typedef struct {
     volatile int gpio_rising_occurred;
     int irq_num;
     int running;
+    unsigned int init;
 
 } dht11_ctx ;
 
@@ -126,7 +125,7 @@ static int dht11_init(dht11_ctx* ctx)
 
     // Check for DHT11's response
     gpio_direction_input(ctx->gpio_p);
-    if(gpio_get_value(ctx->gpio_p))
+    if(gpio_get_value(ctx->gpio_p) == 1)
     {
         pr_err("dht11 Init failure 1\n");
         return -1;
@@ -135,23 +134,24 @@ static int dht11_init(dht11_ctx* ctx)
     // wait for 80 us until DHT11 pull up voltage
     usleep_range(80, 85);
 
-    if(gpio_get_value(ctx->gpio_p) < 0)
+    if(gpio_get_value(ctx->gpio_p) == 0)
     {
         pr_err("dht11 Init failure 2\n");
-        return 0;
+        return -1;
     }   
 
     // wait for 80 us until DHT11 pull down voltage 
     usleep_range(80, 85);
 
-    if(gpio_get_value(ctx->gpio_p))
+    if(gpio_get_value(ctx->gpio_p) == 1)
     {
         pr_err("dht11 Init failure 3\n");
-        return 0;
+        return -1;
     }
 
     // the data transmission can start. Init completed
-    return 1;
+    ctx->init = 1;
+    return 0;
 }
 
 static int dht11_read(dht11_ctx* ctx)
@@ -206,7 +206,7 @@ static int dht11_read_bit(dht11_ctx* ctx)
 {
     usleep_range(50, 55);
     gpio_direction_input(ctx->gpio_p);
-    if(!gpio_get_value(ctx->gpio_p))
+    if(gpio_get_value(ctx->gpio_p) == 0)
     {
         pr_err("Fail to get value gpio dht11\n");
         return -1;
@@ -218,7 +218,7 @@ static int dht11_read_bit(dht11_ctx* ctx)
     
     prepare_to_wait(&dht11_gpio_wait_queue, &wait, TASK_INTERRUPTIBLE);
     schedule_timeout(msecs_to_jiffies(1)); 
-    if (ctx->gpio_rising_occurred || signal_pending(current)) 
+    if (ctx->gpio_rising_occurred) 
     {
         int interval = ctx->curr - ctx->pre;
         if(interval > 50 && interval < 80) 
@@ -241,12 +241,17 @@ static int dht11_read_bit(dht11_ctx* ctx)
 // pin to update the time between the last change with current 
 // change
 static irqreturn_t dht11_get_toggle_time(int irq, void *dev_id)
-{
+{ 
     dht11_ctx* ctx = (dht11_ctx *) dev_id;
+
+    if(ctx->init != 1) 
+        goto end;
+
     ctx->curr = ktime_get();
     ctx->gpio_rising_occurred = 1;
     wake_up_interruptible(&dht11_gpio_wait_queue);
 
+end:
     return IRQ_HANDLED; 
 }
 
@@ -255,34 +260,34 @@ static int dht11_reading_thread(void* data)
     dht11_ctx* ctx = (dht11_ctx* ) data;
 
     pr_info("Reading sensor dht11 data... dht11\n");
+
+    // sending interrupt signal whenever there is rising 
+    // on pin 
+    ctx->irq_num = gpio_to_irq(ctx->gpio_p);
+    if (ctx->irq_num < 0) 
+    {
+        pr_err("Failed to get IRQ number for GPIO %d dht11\n", ctx->gpio_p);
+        gpio_free(ctx->gpio_p);
+        return 0;
+    }
+
+    int ret = request_irq(  ctx->irq_num, dht11_get_toggle_time,
+                            IRQF_TRIGGER_RISING ,
+                            "dht11_gpio_interrupt", (void*) ctx);
+    
+    if(ret < 0)
+    {
+        pr_err("Failure creating interrupt dht11. Error: %d\n", ret);
+        gpio_free(ctx->gpio_p);
+        return 0; 
+    }
+
     while(ctx->running && !kthread_should_stop())
     {
         if(dht11_init(ctx) < 0)
         {
             pr_err("Failure init finale dht11\n");
             break;
-        }
-
-        if (ctx->irq_num > 0) 
-        {
-            free_irq(ctx->irq_num, ctx);
-        }
-
-        ctx->irq_num = gpio_to_irq(ctx->gpio_p);
-        if (ctx->irq_num < 0) 
-        {
-            pr_err("Failed to get IRQ number for GPIO %d dht11\n", ctx->gpio_p);
-            gpio_free(ctx->gpio_p);
-            break;
-        }
-
-        int ret = request_irq(  ctx->irq_num, dht11_get_toggle_time,
-                                IRQF_TRIGGER_RISING ,
-                                "dht11_gpio_interrupt", (void*) ctx);
-        if(ret < 0)
-        {
-            pr_err("Failure creating interrupt dht11. Error: %d\n", ret);
-            break; 
         }
 
         if(dht11_read(ctx) < 0)
@@ -300,6 +305,7 @@ static int dht11_reading_thread(void* data)
     
     free_irq(ctx->irq_num, ctx);
     gpio_free(ctx->gpio_p);
+    dht11_thread = NULL;
 
     pr_info("Exiting DHT11 reading thread...\n");
 
