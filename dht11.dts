@@ -9,7 +9,7 @@
 		__overlay__ {
 			dht11_pins:dht11_pins {
 				compatible = "dht11,sensor";
-				gpios = <&gpio 533>; 
+				gpios = <&gpio 516>; 
 			};
 		};
 	};

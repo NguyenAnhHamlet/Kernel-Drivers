@@ -15,34 +15,74 @@
 
 static DECLARE_WAIT_QUEUE_HEAD(dht11_gpio_wait_queue);
 static struct task_struct *dht11_thread = NULL;
+static struct kobject *dht11_kobj;
 
 typedef struct {
     unsigned int gpio_p;
-    
-    unsigned int temp_int;
-    unsigned int temp_dec;
-    unsigned int humid_int;
-    unsigned int humid_dec;
-    unsigned int sum;
-
-    ktime_t pre;
-    ktime_t curr; 
+    uint8_t data[5];
     volatile int gpio_rising_occurred;
     int irq_num;
     int running;
     unsigned int init;
-
+    
 } dht11_ctx ;
 
 static dht11_ctx ctx;
-static int dht11_read_bit(dht11_ctx* ctx);
-static int convert_bin(int* data);
 static int dht11_check_err(dht11_ctx* ctx);
 static int dht11_init(dht11_ctx* ctx);
 static int dht11_read(dht11_ctx* ctx);
 static int dht11_reading_thread(void* data);
-static irqreturn_t dht11_get_toggle_time(int irq, void *dev_id);
 static void dht11_set_context_running(dht11_ctx* ctx);
+static ssize_t temp_show(struct kobject *kobj, struct kobj_attribute *attr, char *buf);
+static ssize_t humidity_show(struct kobject *kobj, struct kobj_attribute *attr, char *buf);
+
+static struct kobj_attribute temp_attribute = __ATTR(temp, 0444, temp_show, NULL);
+static struct kobj_attribute humidity_attribute = __ATTR(humidity, 0444, humidity_show, NULL);
+
+static struct attribute *attrs[] = 
+{
+    &temp_attribute.attr,
+    &humidity_attribute.attr,
+    NULL,
+};
+
+static struct attribute_group attr_group = 
+{
+    .attrs = attrs,
+};
+
+
+static int wait_till_low(dht11_ctx* ctx, const unsigned int max)
+{
+    unsigned int st = ktime_to_us(ktime_get()); 
+    unsigned int curr = 0;
+start:
+    curr = ktime_to_us(ktime_get());
+    if(curr - st > max) return -1;
+    if(gpio_get_value(ctx->gpio_p) == 0) return curr - st;
+    goto start;
+}
+
+static int wait_till_high(dht11_ctx* ctx, const unsigned int max)
+{
+    unsigned int st = ktime_to_us(ktime_get());
+    unsigned int curr = 0;
+start:
+    curr = ktime_to_us(ktime_get());
+    if(curr - st > max) return -1;
+    if(gpio_get_value(ctx->gpio_p) == 1) return curr - st;
+    goto start;
+}
+
+static ssize_t temp_show(struct kobject *kobj, struct kobj_attribute *attr, char *buf)
+{
+    return sprintf(buf, "%d.%d\n", ctx.data[2], ctx.data[3]);
+}
+
+static ssize_t humidity_show(struct kobject *kobj, struct kobj_attribute *attr, char *buf)
+{
+    return sprintf(buf, "%d.%d\n", ctx.data[0], ctx.data[1]);
+}
 
 static void dht11_set_context_running(dht11_ctx* ctx)
 {
@@ -70,44 +110,18 @@ static int read_gpio_p_dht11(dht11_ctx* ctx)
 
     ctx->gpio_p = gpios[1];
 
-    pr_err("PIN : %d", ctx->gpio_p);
-
     if (!gpio_is_valid(ctx->gpio_p))
     {
         pr_err("DHT11: dht11 gpio not found\n");
         return -EINVAL;
     }
 
-    pr_err("Pin number is: %d\n", ctx->gpio_p);
-
     return 0;
-}
-
-static int convert_bin(int* data)
-{
-    int ret;
-    for (int i = 0; i < 8; i++) 
-    {
-        if (data[i] != 0 && data[i] != 1) {
-            pr_err("Invalid binary value at index %d: %d\n", i, data[i]);
-            return -EINVAL; 
-        }
-        ret |= (data[i] << (7 - i));
-    }
-
-    return ret;
 }
 
 static int dht11_check_err(dht11_ctx* ctx)
 {
-    int sum = 0;
-
-    sum = sum | ctx->temp_int | ctx->temp_dec | ctx->humid_int | ctx->humid_dec;
-
-    if(sum != ctx->sum)
-        return -1;
-    
-    return 0;
+    return (ctx->data[0] + ctx->data[1] + ctx->data[2] + ctx->data[3]) == ctx->data[4]; 
 }
 
 static int dht11_init(dht11_ctx* ctx)
@@ -116,34 +130,35 @@ static int dht11_init(dht11_ctx* ctx)
     // voltage of gpio pin for at least 18 ms
     // Here push it to 20 ms
     gpio_direction_output(ctx->gpio_p, 0);
-    msleep(20);
+    if(gpio_get_value(ctx->gpio_p) == 1)
+    {
+    	pr_err("Value not set 0\n");
+	    return -1;
+    }
+
+    msleep(30);
 
     // MCU pull up the voltage again for 20 - 40 
     // us and wait for DHT11's response
     gpio_direction_output(ctx->gpio_p, 1);
-    usleep_range(40, 45);
-
-    // Check for DHT11's response
+    usleep_range(40, 50);
     gpio_direction_input(ctx->gpio_p);
-    if(gpio_get_value(ctx->gpio_p) == 1)
+
+    if(wait_till_low(ctx, 50) == -1) 
     {
         pr_err("dht11 Init failure 1\n");
         return -1;
     }
 
     // wait for 80 us until DHT11 pull up voltage
-    usleep_range(80, 85);
-
-    if(gpio_get_value(ctx->gpio_p) == 0)
+    if(wait_till_high(ctx, 90) == -1) 
     {
         pr_err("dht11 Init failure 2\n");
         return -1;
     }   
 
     // wait for 80 us until DHT11 pull down voltage 
-    usleep_range(80, 85);
-
-    if(gpio_get_value(ctx->gpio_p) == 1)
+    if(wait_till_low(ctx, 90) == -1) 
     {
         pr_err("dht11 Init failure 3\n");
         return -1;
@@ -171,27 +186,27 @@ static int dht11_read(dht11_ctx* ctx)
     // (integer RH, decimal RH, integer T, and decimal T).  
     // If the calculated checksum matches the received checksum, 
     // the data is considered valid.
-    int data[40];
 
-    for(int i=0; i< 40; i++)
+    for(int i=0;i<5;i++)
     {
-        data[i] = dht11_read_bit(ctx);
-        if(data[i] == -1)
+	    for(int j=0;j<8;j++)
         {
-            pr_err("Falied to read bit number %d\n dht11", i);
-            return 0;
-        }
-    }
+            uint16_t time_wait = wait_till_high(ctx, 60);
+            uint16_t time_bit = wait_till_low(ctx, 80);
+            if(time_bit < time_wait)
+            {
+                (ctx->data[i] <<=1);
+            }
+            else
+            {
+                ctx->data[i] = (ctx->data[i] <<1) |1;
+            }
+	    }
+	}
 
     // convert to int and dec 
-    ctx->temp_int = convert_bin(data);
-    ctx->temp_dec = convert_bin(data + 8);
-    ctx->humid_int = convert_bin(data + 16);
-    ctx->humid_dec = convert_bin(data + 24);
-    ctx->sum = convert_bin(data + 32);
-
-    pr_info("Data dht11 : temp: %d.%d, humid: %d.%d, sum: %d\n", 
-            ctx->temp_int, ctx->temp_dec, ctx->humid_int, ctx->humid_dec, ctx->sum);
+    pr_info("Data dht11 : humid: %d.%d, temp: %d.%d, sum: %d\n", 
+            ctx->data[0], ctx->data[1], ctx->data[2], ctx->data[3], ctx->data[4]);
 
     if(dht11_check_err(ctx) < 0)
     {
@@ -200,59 +215,6 @@ static int dht11_read(dht11_ctx* ctx)
     }
 
     return 1;
-}
-
-static int dht11_read_bit(dht11_ctx* ctx)
-{
-    usleep_range(50, 55);
-    gpio_direction_input(ctx->gpio_p);
-    if(gpio_get_value(ctx->gpio_p) == 0)
-    {
-        pr_err("Fail to get value gpio dht11\n");
-        return -1;
-    }
-
-    ctx->pre = ktime_get();
-
-    DEFINE_WAIT(wait);
-    
-    prepare_to_wait(&dht11_gpio_wait_queue, &wait, TASK_INTERRUPTIBLE);
-    schedule_timeout(msecs_to_jiffies(1)); 
-    if (ctx->gpio_rising_occurred) 
-    {
-        int interval = ctx->curr - ctx->pre;
-        if(interval > 50 && interval < 80) 
-            return 1;
-        if(interval > 80)
-            return -1;
-        return 0;
-    }
-    else 
-    {
-        pr_err(KERN_INFO "Timeout occurred, checking again. dht11\n");
-        return -1;
-    }
-
-
-    return -1;
-}
-
-// call back function executed when there is change state in the 
-// pin to update the time between the last change with current 
-// change
-static irqreturn_t dht11_get_toggle_time(int irq, void *dev_id)
-{ 
-    dht11_ctx* ctx = (dht11_ctx *) dev_id;
-
-    if(ctx->init != 1) 
-        goto end;
-
-    ctx->curr = ktime_get();
-    ctx->gpio_rising_occurred = 1;
-    wake_up_interruptible(&dht11_gpio_wait_queue);
-
-end:
-    return IRQ_HANDLED; 
 }
 
 static int dht11_reading_thread(void* data)
@@ -271,29 +233,18 @@ static int dht11_reading_thread(void* data)
         return 0;
     }
 
-    int ret = request_irq(  ctx->irq_num, dht11_get_toggle_time,
-                            IRQF_TRIGGER_RISING ,
-                            "dht11_gpio_interrupt", (void*) ctx);
-    
-    if(ret < 0)
-    {
-        pr_err("Failure creating interrupt dht11. Error: %d\n", ret);
-        gpio_free(ctx->gpio_p);
-        return 0; 
-    }
-
     while(ctx->running && !kthread_should_stop())
     {
         if(dht11_init(ctx) < 0)
         {
             pr_err("Failure init finale dht11\n");
-            break;
+	        continue;
         }
 
         if(dht11_read(ctx) < 0)
         {
             pr_err("Failure reading data dht11\n");
-            break;
+            continue;
         }
 
         msleep(1000);
@@ -315,6 +266,15 @@ static int dht11_reading_thread(void* data)
 static int __init dht11_driver_init(void)
 {
     dht11_set_context_running(&ctx);
+
+    dht11_kobj = kobject_create_and_add("dht11", kernel_kobj); 
+    if (!dht11_kobj)
+        return -ENOMEM;
+    
+    if(sysfs_create_group(dht11_kobj, &attr_group))
+    {
+        kobject_put(dht11_kobj);
+    }
     
     if(read_gpio_p_dht11(&ctx) < 0)
     {
@@ -322,8 +282,7 @@ static int __init dht11_driver_init(void)
         return -1;
     }
 
-    pr_err("PIN : %d", ctx.gpio_p);
-    int ret = gpio_request(533, "dht11-pin"); 
+    int ret = gpio_request(ctx.gpio_p, "dht11-pin"); 
     if (ret < 0) 
     {
         pr_err("Failed to request GPIO pin %d dht11. Error: %d\n", ctx.gpio_p, ret);
@@ -347,6 +306,12 @@ static void __exit dht11_driver_exit(void)
     ctx.running = 0;
     if (dht11_thread)
         kthread_stop(dht11_thread);
+    
+    if (dht11_kobj) 
+    {
+        kobject_put(dht11_kobj);
+        pr_info("dht11 kobject removed successfully\n");
+    }
 }
 
 module_init(dht11_driver_init);
