@@ -1,0 +1,1 @@
+savedcmd_/home/anhnguyen/driver/linux/drivers/dht11/usb/modules.order := {   echo /home/anhnguyen/driver/linux/drivers/dht11/usb/usbmouse.o; :; } > /home/anhnguyen/driver/linux/drivers/dht11/usb/modules.order

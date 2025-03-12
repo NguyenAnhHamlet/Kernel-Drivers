@@ -1,0 +1,1 @@
+savedcmd_/home/anhnguyen/driver/linux/drivers/dht11/usb/usbmouse.mod := printf '%s\n'   usbmouse.o | awk '!x[$$0]++ { print("/home/anhnguyen/driver/linux/drivers/dht11/usb/"$$0) }' > /home/anhnguyen/driver/linux/drivers/dht11/usb/usbmouse.mod
