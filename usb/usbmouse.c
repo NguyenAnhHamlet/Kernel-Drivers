@@ -45,6 +45,7 @@ static ssize_t usb_read(struct file *file, char __user *buffer, size_t count, lo
 static int mouse_open(struct input_dev* dev);
 static void mouse_close(struct input_dev *dev);
 static void skel_disconnect(struct usb_interface *interface);
+static struct mouse  *mousedev;
 
 static struct usb_driver skel_driver = 
 {
@@ -69,7 +70,7 @@ static int skel_probe(struct usb_interface *interface, const struct usb_device_i
     struct usb_endpoint_descriptor *endpoint;
     unsigned int pipe;
     
-    struct mouse* mousedev = kzalloc(sizeof(struct mouse), GFP_KERNEL);
+    mousedev = kzalloc(sizeof(struct mouse), GFP_KERNEL);
 
     mousedev->urb = usb_alloc_urb(0, GFP_ATOMIC);
     if(!mousedev->urb)
@@ -166,6 +167,7 @@ void complete_handler(struct urb * urb)
 	struct input_dev *dev = mousedev->dev;
 	int status;
 
+    printk("RUNNING HERE");
 	switch (urb->status) {
 	case 0:			/* success */
         input_sync(dev);
@@ -187,7 +189,6 @@ void complete_handler(struct urb * urb)
     if(data[1] & 0x01)
     {
 		pr_info("Left mouse button clicked!\n");
-		
 	}
 	else if(data[1] & 0x02)
     {
@@ -257,6 +258,10 @@ static void skel_disconnect(struct usb_interface *interface)
 {
 	printk(KERN_ALERT "USB disconnecting\n");
 	usb_deregister_dev(interface, NULL);
+    usb_free_urb(mousedev->urb);
+    usb_free_coherent(mousedev->udev, 8, mousedev->data, mousedev->dma);
+    input_free_device(mousedev->dev);
+    kfree(mousedev);
 	unregister_chrdev(0, "mymouse");
 }
 

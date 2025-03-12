@@ -45,6 +45,14 @@ __used __section("__versions") =
 	"usb_register_driver\0"
 	"\x1c\x00\x00\x00\xb4\x45\x7d\xd4"
 	"usb_deregister_dev\0\0"
+	"\x18\x00\x00\x00\xe3\x55\x1c\xff"
+	"usb_free_urb\0\0\0\0"
+	"\x1c\x00\x00\x00\x45\x70\xe8\xc7"
+	"usb_free_coherent\0\0\0"
+	"\x1c\x00\x00\x00\x18\x1a\x9d\x1e"
+	"input_free_device\0\0\0"
+	"\x10\x00\x00\x00\xba\x0c\x7a\x03"
+	"kfree\0\0\0"
 	"\x1c\x00\x00\x00\xc0\xfb\xc3\x6b"
 	"__unregister_chrdev\0"
 	"\x18\x00\x00\x00\xd0\xb4\x7e\x49"
@@ -83,4 +91,4 @@ MODULE_INFO(depends, "");
 
 MODULE_ALIAS("usb:v046DpC52Bd*dc*dsc*dp*ic*isc*ip*in*");
 
-MODULE_INFO(srcversion, "6A82FFACAEE4A194F1312EE");
+MODULE_INFO(srcversion, "B7F8E2232812551277BB298");
