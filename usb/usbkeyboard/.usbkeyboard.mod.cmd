@@ -1,0 +1,1 @@
+savedcmd_/home/anhnguyen/driver/linux/drivers/dht11/usb/usbkeyboard/usbkeyboard.mod := printf '%s\n'   usbkeyboard.o | awk '!x[$$0]++ { print("/home/anhnguyen/driver/linux/drivers/dht11/usb/usbkeyboard/"$$0) }' > /home/anhnguyen/driver/linux/drivers/dht11/usb/usbkeyboard/usbkeyboard.mod
