@@ -1,0 +1,1 @@
+savedcmd_/home/anhnguyen/driver/linux/drivers/dht11/usb/usbmouse/Module.symvers :=  scripts/mod/modpost -M -m -a      -o /home/anhnguyen/driver/linux/drivers/dht11/usb/usbmouse/Module.symvers -T /home/anhnguyen/driver/linux/drivers/dht11/usb/usbmouse/modules.order -i Module.symvers -e 
