@@ -1,5 +1,3 @@
-#include <linux/module.h>
-#include <linux/init.h>
 #include <linux/slab.h>
 #include <linux/ktime.h>
 #include <linux/i2c.h>
@@ -16,6 +14,9 @@
 static DECLARE_WAIT_QUEUE_HEAD(dht11_gpio_wait_queue);
 static struct task_struct *dht11_thread = NULL;
 static struct kobject *dht11_kobj;
+static struct class *dht11_class;
+static struct device *dht11_device;
+uint16_t major;
 
 typedef struct {
     unsigned int gpio_p;
@@ -33,23 +34,35 @@ static int dht11_init(dht11_ctx* ctx);
 static int dht11_read(dht11_ctx* ctx);
 static int dht11_reading_thread(void* data);
 static void dht11_set_context_running(dht11_ctx* ctx);
-static ssize_t temp_show(struct kobject *kobj, struct kobj_attribute *attr, char *buf);
-static ssize_t humidity_show(struct kobject *kobj, struct kobj_attribute *attr, char *buf);
+static ssize_t device_read(struct file *file, char __user *buffer, 
+                        size_t count, loff_t *ppos);
 
-static struct kobj_attribute temp_attribute = __ATTR(temp, 0444, temp_show, NULL);
-static struct kobj_attribute humidity_attribute = __ATTR(humidity, 0444, humidity_show, NULL);
-
-static struct attribute *attrs[] = 
+struct file_operations fops = 
 {
-    &temp_attribute.attr,
-    &humidity_attribute.attr,
-    NULL,
+    .read = device_read,
+    .write = NULL,
+    .open = NULL,
+    .release = NULL 
 };
 
-static struct attribute_group attr_group = 
+static ssize_t device_read(struct file *file, char __user *buffer, 
+                        size_t count, loff_t *ppos)
 {
-    .attrs = attrs,
-};
+    char buf[32];
+    int len;
+    
+    len = snprintf(buf, sizeof(buf), "%d %d\n", ctx.data[0], ctx.data[2]);
+
+    if (*ppos >= len)
+        return 0;
+
+    if(copy_to_user(buffer, buf, sizeof(buf)))
+        return -EFAULT; 
+
+    *ppos += len;
+
+    return len; 
+}
 
 
 static int wait_till_low(dht11_ctx* ctx, const unsigned int max)
@@ -72,16 +85,6 @@ start:
     if(curr - st > max) return -1;
     if(gpio_get_value(ctx->gpio_p) == 1) return curr - st;
     goto start;
-}
-
-static ssize_t temp_show(struct kobject *kobj, struct kobj_attribute *attr, char *buf)
-{
-    return sprintf(buf, "%d.%d\n", ctx.data[2], ctx.data[3]);
-}
-
-static ssize_t humidity_show(struct kobject *kobj, struct kobj_attribute *attr, char *buf)
-{
-    return sprintf(buf, "%d.%d\n", ctx.data[0], ctx.data[1]);
 }
 
 static void dht11_set_context_running(dht11_ctx* ctx)
@@ -254,7 +257,7 @@ static int dht11_reading_thread(void* data)
     }
 
     
-    free_irq(ctx->irq_num, ctx);
+    //free_irq(ctx->irq_num, ctx);
     gpio_free(ctx->gpio_p);
     dht11_thread = NULL;
 
@@ -267,21 +270,46 @@ static int __init dht11_driver_init(void)
 {
     dht11_set_context_running(&ctx);
 
-    dht11_kobj = kobject_create_and_add("dht11", kernel_kobj); 
-    if (!dht11_kobj)
-        return -ENOMEM;
-    
-    if(sysfs_create_group(dht11_kobj, &attr_group))
-    {
-        kobject_put(dht11_kobj);
-    }
-    
     if(read_gpio_p_dht11(&ctx) < 0)
     {
         pr_err("Failed to read gpio \n");
         return -1;
     }
 
+    major = register_chrdev(0, "dht11_driver", &fops);
+    if(major < 0)
+    {
+        pr_info("dht11 char device registered failed");
+    }
+    else 
+    {
+        pr_info("dht11 char device registered successfully");
+    }
+
+    // Create device class 
+    dht11_class = class_create("dht11_driver");
+    if (IS_ERR(dht11_class))
+    {
+        unregister_chrdev(major, "dht11_driver");
+        return PTR_ERR(dht11_class);
+    }
+
+    // Create device node in /dev/
+    dht11_device = device_create(dht11_class, NULL, MKDEV(major, 0), NULL, "dht11_driver");
+    if (IS_ERR(dht11_device))
+    {
+        unregister_chrdev(major, "dht11_driver");
+        class_destroy(dht11_class);
+        pr_err("Failed to create device\n");
+        return PTR_ERR(dht11_device);
+    }
+
+    pr_info("Device /dev/dht11_driver created successfully\n");
+
+    dht11_kobj = kobject_create_and_add("dht11", kernel_kobj); 
+    if (!dht11_kobj)
+        return -ENOMEM;
+    
     int ret = gpio_request(ctx.gpio_p, "dht11-pin"); 
     if (ret < 0) 
     {
@@ -304,14 +332,23 @@ static void __exit dht11_driver_exit(void)
 {
     pr_info("Stopping dht11 module dht11\n");
     ctx.running = 0;
-    if (dht11_thread)
-        kthread_stop(dht11_thread);
-    
+
     if (dht11_kobj) 
     {
+        kobject_del(dht11_kobj);
         kobject_put(dht11_kobj);
+        dht11_kobj = NULL;
         pr_info("dht11 kobject removed successfully\n");
     }
+
+    device_destroy(dht11_class, MKDEV(major, 0));
+    class_destroy(dht11_class);
+    unregister_chrdev(major, "dht11_driver");
+    
+    pr_info("dht11_driver char device removed");
+
+    if (dht11_thread)
+        kthread_stop(dht11_thread);
 }
 
 module_init(dht11_driver_init);
