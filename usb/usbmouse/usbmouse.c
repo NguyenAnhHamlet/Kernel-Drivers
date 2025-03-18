@@ -191,19 +191,24 @@ void complete_handler(struct urb * urb)
     data[0], data[1], data[2], data[3], data[4], data[5], data[6], data[7]);
 
     int clicked = hid_to_linux_code(data[1]);
-    int rel_move = data[6];  
+    int rel_move_mouse = data[3] | data[5];  
+    int rel_move_wheel = data[6];  
 
     if(clicked) 
     {
         input_report_key(mousedev->dev, clicked, 1);
-        input_report_rel(mousedev->dev, REL_X, (int8_t) data[2]);
-        input_report_rel(mousedev->dev, REL_Y, (int8_t) data[3]);
         input_report_key(mousedev->dev, clicked, 0);
     }
 
-    if (rel_move)
+    if (rel_move_wheel)
     {
-       input_report_rel(mousedev->dev, REL_WHEEL, (int8_t)data[3]); 
+       input_report_rel(mousedev->dev, REL_WHEEL, (int8_t)data[6]); 
+    }
+
+    if (rel_move_mouse)
+    {
+        input_report_rel(mousedev->dev, REL_X, (int8_t) data[2]);
+        input_report_rel(mousedev->dev, REL_Y, (int8_t) data[3]);
     }
 
     input_sync(mousedev->dev);
