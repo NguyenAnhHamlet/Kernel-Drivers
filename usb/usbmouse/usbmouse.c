@@ -32,9 +32,17 @@ static struct mouse
 
 static struct usb_device_id skel_table[] =
 {
-    {USB_DEVICE(0x046d ,0xc52b)},  
+    {USB_DEVICE(0x30fa ,0x1701)},  
     {}
 };
+
+static const int button_map[17] = 
+{
+    [0 ... 16] = 0,
+
+    [0x01] = BTN_LEFT, [0x02] = BTN_RIGHT, [0x04] = BTN_MIDDLE,
+    [0x08] = BTN_SIDE, [0x10] = BTN_EXTRA 
+}; 
 
 MODULE_DEVICE_TABLE(usb, skel_table );
 
@@ -52,6 +60,23 @@ static struct usb_driver skel_driver =
     .probe = skel_probe,
     .disconnect = skel_disconnect,
 };
+
+static void setup_mouse_keymap(struct mouse *mousedev)
+{
+    __set_bit(BTN_LEFT, mousedev->dev->keybit);
+    __set_bit(BTN_RIGHT, mousedev->dev->keybit);
+    __set_bit(BTN_MIDDLE, mousedev->dev->keybit);
+    __set_bit(BTN_SIDE, mousedev->dev->keybit);     // Side button (if available)
+    __set_bit(BTN_EXTRA, mousedev->dev->keybit);    // Extra button (if available)
+    __set_bit(REL_X, mousedev->dev->relbit);        // X-axis movement
+    __set_bit(REL_Y, mousedev->dev->relbit);        // Y-axis movement
+    __set_bit(REL_WHEEL, mousedev->dev->relbit);    // Scroll wheel
+}
+
+static int hid_to_linux_code(uint8_t hid)
+{
+    return button_map[hid];
+}
 
 static int skel_probe(struct usb_interface *interface, const struct usb_device_id *id)
 {
@@ -98,7 +123,7 @@ static int skel_probe(struct usb_interface *interface, const struct usb_device_i
     mousedev->packet_size = usb_maxpacket(mousedev->udev, pipe);
     mousedev->dev = input_allocate_device();
     usb_make_path(mousedev->udev, mousedev->phys, sizeof(mousedev->phys));    
-    strlcat(mousedev->phys, "/input0", sizeof(mousedev->phys));
+    strlcat(mousedev->phys, "/mouse0", sizeof(mousedev->phys));
     
     mousedev->dev->name = mousedev->name;
 	mousedev->dev->phys = mousedev->phys;
@@ -121,6 +146,7 @@ static int skel_probe(struct usb_interface *interface, const struct usb_device_i
     mousedev->dev->keybit[BIT_WORD(BTN_MOUSE)] |= BIT_MASK(BTN_SIDE) |
 		              BIT_MASK(BTN_EXTRA);
     
+    setup_mouse_keymap(mousedev);
     
     mousedev->dev->open = mouse_open;
     mousedev->dev->close = mouse_close;
@@ -134,6 +160,7 @@ static int skel_probe(struct usb_interface *interface, const struct usb_device_i
 	mousedev->urb->transfer_flags |= URB_NO_TRANSFER_DMA_MAP;
 
     input_register_device(mousedev->dev);
+    usb_set_intfdata(interface, mousedev);
 
 	return 0;
 }
@@ -142,12 +169,13 @@ void complete_handler(struct urb * urb)
 {
     struct mouse* mousedev = urb->context;
 	char *data = mousedev->data;
-	struct input_dev *dev = mousedev->dev;
 	int status;
 
-	switch (urb->status) {
+    printk("RUNNNING HERE");
+
+	switch (urb->status) 
+    {
 	case 0:			/* success */
-        input_sync(dev);
 		break;
 	case -ECONNRESET:	/* unlink */
 	case -ENOENT:
@@ -156,6 +184,29 @@ void complete_handler(struct urb * urb)
 	default:		/* error */
         break;
 	}    
+
+    
+
+    printk(KERN_INFO "USB Data: %02X %02X %02X %02X %02X %02X %02X %02X\n",
+    data[0], data[1], data[2], data[3], data[4], data[5], data[6], data[7]);
+
+    int clicked = hid_to_linux_code(data[1]);
+    int rel_move = data[6];  
+
+    if(clicked) 
+    {
+        input_report_key(mousedev->dev, clicked, 1);
+        input_report_rel(mousedev->dev, REL_X, (int8_t) data[2]);
+        input_report_rel(mousedev->dev, REL_Y, (int8_t) data[3]);
+        input_report_key(mousedev->dev, clicked, 0);
+    }
+
+    if (rel_move)
+    {
+       input_report_rel(mousedev->dev, REL_WHEEL, (int8_t)data[3]); 
+    }
+
+    input_sync(mousedev->dev);
 
     status = usb_submit_urb(urb, GFP_ATOMIC);
     if(status)
@@ -175,10 +226,11 @@ void complete_handler(struct urb * urb)
     {
 		pr_info("Wheel button clicked!\n");
 	}
-	else if(data[5])
+	else if(data[6])
     {
 		pr_info("Wheel moves!\n");
 	}
+    
 }
 
 static int mouse_open(struct input_dev* dev)
@@ -221,18 +273,20 @@ static int mouse_open(struct input_dev* dev)
 static void mouse_close(struct input_dev *dev)
 {
 	struct mouse *mousedev = input_get_drvdata(dev);
-
-	usb_kill_urb(mousedev->urb);
+	if(mousedev->udev == NULL)
+        usb_kill_urb(mousedev->urb);
+    printk(KERN_ALERT "Mouse close");
 }
 
 static void skel_disconnect(struct usb_interface *interface)
 {
 	printk(KERN_ALERT "USB disconnecting\n");
-	usb_deregister_dev(interface, NULL);
+    struct mouse* mousedev = usb_get_intfdata(interface);
     usb_free_urb(mousedev->urb);
     usb_free_coherent(mousedev->udev, 8, mousedev->data, mousedev->dma);
-    input_free_device(mousedev->dev);
+    input_unregister_device(mousedev->dev);
     kfree(mousedev);
+    usb_set_intfdata(interface, NULL);
 	unregister_chrdev(0, "mymouse");
 }
 

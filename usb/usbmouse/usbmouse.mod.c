@@ -39,26 +39,26 @@ __used __section("__versions") =
 	"_printk\0"
 	"\x18\x00\x00\x00\xb8\x27\xe3\xd7"
 	"usb_submit_urb\0\0"
+	"\x28\x00\x00\x00\xb3\x1c\xa2\x87"
+	"__ubsan_handle_out_of_bounds\0\0\0\0"
 	"\x14\x00\x00\x00\xf3\x03\xde\xcd"
 	"input_event\0"
 	"\x1c\x00\x00\x00\xfb\xd5\x66\x78"
 	"usb_register_driver\0"
-	"\x1c\x00\x00\x00\xb4\x45\x7d\xd4"
-	"usb_deregister_dev\0\0"
 	"\x18\x00\x00\x00\xe3\x55\x1c\xff"
 	"usb_free_urb\0\0\0\0"
 	"\x1c\x00\x00\x00\x45\x70\xe8\xc7"
 	"usb_free_coherent\0\0\0"
-	"\x1c\x00\x00\x00\x18\x1a\x9d\x1e"
-	"input_free_device\0\0\0"
+	"\x20\x00\x00\x00\xab\x78\x9a\x51"
+	"input_unregister_device\0"
 	"\x10\x00\x00\x00\xba\x0c\x7a\x03"
 	"kfree\0\0\0"
 	"\x1c\x00\x00\x00\xc0\xfb\xc3\x6b"
 	"__unregister_chrdev\0"
-	"\x18\x00\x00\x00\xd0\xb4\x7e\x49"
-	"usb_kill_urb\0\0\0\0"
 	"\x18\x00\x00\x00\xb1\x40\x5a\x51"
 	"usb_deregister\0\0"
+	"\x18\x00\x00\x00\xd0\xb4\x7e\x49"
+	"usb_kill_urb\0\0\0\0"
 	"\x1c\x00\x00\x00\x63\xa5\x03\x4c"
 	"random_kmalloc_seed\0"
 	"\x18\x00\x00\x00\x82\x57\x74\xb8"
@@ -87,6 +87,6 @@ __used __section("__versions") =
 
 MODULE_INFO(depends, "");
 
-MODULE_ALIAS("usb:v046DpC52Bd*dc*dsc*dp*ic*isc*ip*in*");
+MODULE_ALIAS("usb:v30FAp1701d*dc*dsc*dp*ic*isc*ip*in*");
 
-MODULE_INFO(srcversion, "79CD32F62A6F3F831EF44DE");
+MODULE_INFO(srcversion, "CB3A4E2681B099CA9BB4726");
