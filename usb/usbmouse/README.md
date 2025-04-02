@@ -25,7 +25,7 @@ make unload
 Linux kernel headers
 USB core and HID subsystem support
 
-Usage: 
+## Usage: 
 Once loaded, the driver will listen for mouse movement events. You can check logs using:
 ``` sh
 make log
