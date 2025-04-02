@@ -17,7 +17,6 @@ MODULE_VERSION("0.1");
 
 const uint8_t keys[] = {0x02, 0x04, 0x16, 0x07};
 
-
 static struct keyboard
 {
     char name[64];

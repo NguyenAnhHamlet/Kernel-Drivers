@@ -1,1 +1,0 @@
-savedcmd_/home/anhnguyen/driver/linux/drivers/dht11/usb/Module.symvers :=  scripts/mod/modpost -M -m -a      -o /home/anhnguyen/driver/linux/drivers/dht11/usb/Module.symvers -T /home/anhnguyen/driver/linux/drivers/dht11/usb/modules.order -i Module.symvers -e 
