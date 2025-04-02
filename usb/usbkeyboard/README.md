@@ -14,17 +14,23 @@ Loadable and unloadable as a kernel module.
 ## Usage
 ## Building and Loading the Module
 Run the following commands to compile and load the driver:
+```sh 
 make all       # Compile the module  
 make load      # Load the module into the kernel  
+```
 
 ## Unloading the Module
 To remove the module from the kernel, use:
+``` sh
 make unload 
- 
+```
+
 ## Dependencies
 Linux kernel headers
 USB core and HID subsystem support
 
 ## Usage
 Once loaded, the driver will capture keypress events. You can check logs using:
+``` sh 
 make log
+```
