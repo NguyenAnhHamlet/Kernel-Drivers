@@ -171,8 +171,6 @@ void complete_handler(struct urb * urb)
 	char *data = mousedev->data;
 	int status;
 
-    printk("RUNNNING HERE");
-
 	switch (urb->status) 
     {
 	case 0:			/* success */
@@ -186,9 +184,10 @@ void complete_handler(struct urb * urb)
 	}    
 
     
-
+#ifdef DEBUG
     printk(KERN_INFO "USB Data: %02X %02X %02X %02X %02X %02X %02X %02X\n",
     data[0], data[1], data[2], data[3], data[4], data[5], data[6], data[7]);
+#endif
 
     int clicked = hid_to_linux_code(data[1]);
     int rel_move_mouse = data[3] | data[5];  
@@ -219,6 +218,7 @@ void complete_handler(struct urb * urb)
         pr_err("Failed to submit");
     }
 
+#ifdef DEBUG
     if(data[1] & 0x01)
     {
 		pr_info("Left mouse button clicked!\n");
@@ -235,6 +235,7 @@ void complete_handler(struct urb * urb)
     {
 		pr_info("Wheel moves!\n");
 	}
+#endif
     
 }
 
@@ -257,8 +258,6 @@ static int mouse_open(struct input_dev* dev)
 		printk(KERN_ALERT "No mouse->urb\n");
 		return -1;
 	}
-
-    printk("RUNNNING");
     
     // set the usb_device for urb
     mousedev->urb->dev = mousedev->udev;

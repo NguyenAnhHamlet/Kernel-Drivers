@@ -15,7 +15,9 @@ MODULE_AUTHOR("NGUYEN ANH");
 MODULE_DESCRIPTION("Keyboard USB driver");
 MODULE_VERSION("0.1");
 
+#ifdef DEBUG
 const uint8_t keys[] = {0x02, 0x04, 0x16, 0x07};
+#endif
 
 static struct keyboard
 {
@@ -249,6 +251,7 @@ void complete_handler(struct urb * urb)
         pr_err("Failed to submit");
     }
 
+#ifdef DEBUG 
     if (data[0] == keys[0])
     {
         pr_info("Left Shift pressed");
@@ -260,6 +263,7 @@ void complete_handler(struct urb * urb)
     }
 
     printk("press key");
+#endif
 }
 
 int usb_hid_to_linux_keycode(int hid_code)
@@ -298,7 +302,9 @@ static int keyboard_open(struct input_dev* dev)
         printk(KERN_ALERT "Failed submitting urb: error code %d\n", ret);
     }
 
+#ifdef DEBUG
     printk("Keyboard open");
+#endif
 
     return 0;
 }

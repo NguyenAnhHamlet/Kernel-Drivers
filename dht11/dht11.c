@@ -25,7 +25,7 @@ typedef struct {
     int irq_num;
     int running;
     unsigned int init;
-    
+    uint16_t major;
 } dht11_ctx ;
 
 static dht11_ctx ctx;

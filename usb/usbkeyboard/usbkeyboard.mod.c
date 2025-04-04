@@ -61,7 +61,7 @@ __used __section("__versions") =
 	"__ubsan_handle_out_of_bounds\0\0\0\0"
 	"\x1c\x00\x00\x00\x63\xa5\x03\x4c"
 	"random_kmalloc_seed\0"
-	"\x18\x00\x00\x00\x82\x57\x74\xb8"
+	"\x18\x00\x00\x00\x70\x26\x45\xa1"
 	"kmalloc_caches\0\0"
 	"\x20\x00\x00\x00\x7e\xfb\xa7\x5f"
 	"__kmalloc_cache_noprof\0\0"
@@ -89,4 +89,4 @@ MODULE_INFO(depends, "");
 
 MODULE_ALIAS("usb:v258Ap002Ad*dc*dsc*dp*ic*isc*ip*in*");
 
-MODULE_INFO(srcversion, "9608ECC2A60EF77C016B606");
+MODULE_INFO(srcversion, "497CBA63234358BAD6EC871");

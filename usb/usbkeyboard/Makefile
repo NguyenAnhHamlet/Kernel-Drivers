@@ -1,12 +1,14 @@
 obj-m += usbkeyboard.o
 
+debug_flag=EXTRA_CFLAGS=-DDEBUG
+
 export CROSS_COMPILE=aarch64-linux-gnu-
 export ARCH=arm64
  
 KDIR = /lib/modules/$(shell uname -r)/build
 
 all:
-	make -C $(KDIR) M=$(shell pwd) modules
+	make -C $(KDIR) M=$(shell pwd) modules ${debug_flag}
  
 clean:
 	make -C $(KDIR) M=$(shell pwd) clean
