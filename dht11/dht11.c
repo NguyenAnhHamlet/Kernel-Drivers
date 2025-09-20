@@ -20,9 +20,10 @@ uint16_t major;
 
 typedef struct {
     unsigned int gpio_p;
+    unsigned int gpio_val;
     uint8_t data[5];
-    volatile int gpio_rising_occurred;
-    int irq_num;
+    volatile int gpio_toggle_occurred;
+    int dht11_irq;
     int running;
     unsigned int init;
     uint16_t major;
@@ -34,8 +35,11 @@ static int dht11_init(dht11_ctx* ctx);
 static int dht11_read(dht11_ctx* ctx);
 static int dht11_reading_thread(void* data);
 static void dht11_set_context_running(dht11_ctx* ctx);
-static ssize_t device_read(struct file *file, char __user *buffer, 
-                        size_t count, loff_t *ppos);
+static ssize_t device_read( struct file *file, char __user *buffer, 
+                            size_t count, loff_t *ppos);
+static irqreturn_t dht11_gpio_handler(int irq, void* dev_id);
+static int wait_till_toggle_interruptable(dht11_ctx* ctx,
+                                          const unsigned int max);
 
 struct file_operations fops = 
 {
@@ -44,6 +48,21 @@ struct file_operations fops =
     .open = NULL,
     .release = NULL 
 };
+
+// call back function to handle toggle interrupt on gpio
+// ACK and set gpio_toggle_occured
+static irqreturn_t dht11_gpio_handler (int irq, 
+                                             void* dev_id)
+{
+    int gpio_curr_val = gpio_get_value(ctx.gpio_p);
+    if (gpio_curr_val ==  ctx.gpio_val) {
+        // irq is not on this device, toggle not occured
+        return IRQ_NONE;
+    }
+    ctx.gpio_toggle_occurred = 1;
+
+    return IRQ_HANDLED;
+}
 
 static ssize_t device_read(struct file *file, char __user *buffer, 
                         size_t count, loff_t *ppos)
@@ -65,27 +84,45 @@ static ssize_t device_read(struct file *file, char __user *buffer,
 }
 
 
-static int wait_till_low(dht11_ctx* ctx, const unsigned int max)
-{
+// static int wait_till_low(dht11_ctx* ctx, const unsigned int max)
+// {
+//     unsigned int st = ktime_to_us(ktime_get()); 
+//     unsigned int curr = 0;
+// start:
+//     curr = ktime_to_us(ktime_get());
+//     if(curr - st > max) return -1;
+//     if(gpio_get_value(ctx->gpio_p) == 0) return curr - st;
+//     goto start;
+// }
+
+static int wait_till_toggle_interruptable(dht11_ctx* ctx, 
+                                          const unsigned int max) {
     unsigned int st = ktime_to_us(ktime_get()); 
     unsigned int curr = 0;
-start:
+
+    wait_event_interruptible(dht11_gpio_wait_queue, 
+        ctx->gpio_toggle_occurred);
+
+    // toggle event ocurred, unset gpio_toggle_occurred 
+    ctx->gpio_toggle_occurred = 0;
     curr = ktime_to_us(ktime_get());
-    if(curr - st > max) return -1;
-    if(gpio_get_value(ctx->gpio_p) == 0) return curr - st;
-    goto start;
+    if(curr - st > max) {
+        return -1;
+    } 
+
+    return curr - st;
 }
 
-static int wait_till_high(dht11_ctx* ctx, const unsigned int max)
-{
-    unsigned int st = ktime_to_us(ktime_get());
-    unsigned int curr = 0;
-start:
-    curr = ktime_to_us(ktime_get());
-    if(curr - st > max) return -1;
-    if(gpio_get_value(ctx->gpio_p) == 1) return curr - st;
-    goto start;
-}
+// static int wait_till_high(dht11_ctx* ctx, const unsigned int max)
+// {
+//     unsigned int st = ktime_to_us(ktime_get());
+//     unsigned int curr = 0;
+// start:
+//     curr = ktime_to_us(ktime_get());
+//     if(curr - st > max) return -1;
+//     if(gpio_get_value(ctx->gpio_p) == 1) return curr - st;
+//     goto start;
+// }
 
 static void dht11_set_context_running(dht11_ctx* ctx)
 {
@@ -147,21 +184,21 @@ static int dht11_init(dht11_ctx* ctx)
     usleep_range(40, 50);
     gpio_direction_input(ctx->gpio_p);
 
-    if(wait_till_low(ctx, 50) == -1) 
+    if(wait_till_toggle_interruptable(ctx, 50) == -1) 
     {
         pr_err("dht11 Init failure 1\n");
         return -1;
     }
 
     // wait for 80 us until DHT11 pull up voltage
-    if(wait_till_high(ctx, 90) == -1) 
+    if(wait_till_toggle_interruptable(ctx, 90) == -1) 
     {
         pr_err("dht11 Init failure 2\n");
         return -1;
     }   
 
     // wait for 80 us until DHT11 pull down voltage 
-    if(wait_till_low(ctx, 90) == -1) 
+    if(wait_till_toggle_interruptable(ctx, 90) == -1) 
     {
         pr_err("dht11 Init failure 3\n");
         return -1;
@@ -194,8 +231,8 @@ static int dht11_read(dht11_ctx* ctx)
     {
 	    for(int j=0;j<8;j++)
         {
-            uint16_t time_wait = wait_till_high(ctx, 60);
-            uint16_t time_bit = wait_till_low(ctx, 80);
+            uint16_t time_wait = wait_till_toggle_interruptable(ctx, 60);
+            uint16_t time_bit = wait_till_toggle_interruptable(ctx, 80);
             if(time_bit < time_wait)
             {
                 (ctx->data[i] <<=1);
@@ -222,18 +259,26 @@ static int dht11_read(dht11_ctx* ctx)
 
 static int dht11_reading_thread(void* data)
 {
+    int ret = 0;
     dht11_ctx* ctx = (dht11_ctx* ) data;
 
     pr_info("Reading sensor dht11 data... dht11\n");
 
     // sending interrupt signal whenever there is rising 
     // on pin 
-    ctx->irq_num = gpio_to_irq(ctx->gpio_p);
-    if (ctx->irq_num < 0) 
-    {
-        pr_err("Failed to get IRQ number for GPIO %d dht11\n", ctx->gpio_p);
-        gpio_free(ctx->gpio_p);
-        return 0;
+    ret = gpio_to_irq(ctx->gpio_p);
+    if (ret < 0) {
+        goto err0;
+    }
+
+    ctx->dht11_irq = ret;
+
+    ret = request_irq(ctx->dht11_irq, dht11_gpio_handler, 
+                      IRQF_TRIGGER_RISING | IRQF_TRIGGER_FALLING, 
+                      "dht11 toggle interrupt", dht11_device);
+    
+    if (ret ) {
+        goto err1;
     }
 
     while(ctx->running && !kthread_should_stop())
@@ -262,6 +307,12 @@ static int dht11_reading_thread(void* data)
     dht11_thread = NULL;
 
     pr_info("Exiting DHT11 reading thread...\n");
+
+err1:
+
+err0: 
+    pr_err("Failed to get IRQ number for GPIO %d dht11\n", ctx->gpio_p);
+    gpio_free(ctx->gpio_p);
 
     return 0;
 }
