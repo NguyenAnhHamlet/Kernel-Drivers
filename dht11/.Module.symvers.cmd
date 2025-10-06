@@ -1,1 +1,1 @@
-savedcmd_/home/anhnguyen/driver/linux/drivers/dht11/dht11/Module.symvers :=  scripts/mod/modpost -M -m -a      -o /home/anhnguyen/driver/linux/drivers/dht11/dht11/Module.symvers -T /home/anhnguyen/driver/linux/drivers/dht11/dht11/modules.order -i Module.symvers -e 
+savedcmd_/home/nguyenanh/git/linux/drivers/Kernel-Drivers/dht11/Module.symvers :=  scripts/mod/modpost -M -m -a      -o /home/nguyenanh/git/linux/drivers/Kernel-Drivers/dht11/Module.symvers -T /home/nguyenanh/git/linux/drivers/Kernel-Drivers/dht11/modules.order -i Module.symvers -e 

@@ -1,16 +1,28 @@
 /dts-v1/;
 /plugin/;
 
-/{
-	compatible = "brcm,bcm2835";
-
-	fragment@0 {
-		target = <&gpio>;
-		__overlay__ {
-			dht11_pins:dht11_pins {
-				compatible = "dht11,sensor";
-				gpios = <&gpio 516>; 
-			};
-		};
+&bcm2711_pinctrl {
+	dht11_pins: dht11_pins {
+		brcm,pins=<17>;
+        brcm,function=<0>;  /*BCM2835_FSEL_GPIO_IN*/
+        brcm,pull=<2>;  /*BCM2835_PUD_UP*/
 	};
+};
+
+/ {
+    compatible = "brcm,bcm2835";
+    
+    // The device node for your sensor
+    fragment@0 {
+        target-path = "/";
+        
+        __overlay__ {
+            dht11_sensor: dht11_sensor {
+                compatible = "dht11,sensor";
+                pinctrl-names = "default";
+                pinctrl-0 = <&dht11_pins>;
+				gpios = <&gpio 17 1>;
+            };
+        };
+    };
 };

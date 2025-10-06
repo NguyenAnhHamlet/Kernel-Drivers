@@ -1,1 +1,1 @@
-savedcmd_/home/anhnguyen/driver/linux/drivers/dht11/dht11/modules.order := {   echo /home/anhnguyen/driver/linux/drivers/dht11/dht11/dht11.o; :; } > /home/anhnguyen/driver/linux/drivers/dht11/dht11/modules.order
+savedcmd_/home/nguyenanh/git/linux/drivers/Kernel-Drivers/dht11/modules.order := {   echo /home/nguyenanh/git/linux/drivers/Kernel-Drivers/dht11/dht11.o; :; } > /home/nguyenanh/git/linux/drivers/Kernel-Drivers/dht11/modules.order

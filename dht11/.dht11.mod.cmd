@@ -1,1 +1,1 @@
-savedcmd_/home/anhnguyen/driver/linux/drivers/dht11/dht11/dht11.mod := printf '%s\n'   dht11.o | awk '!x[$$0]++ { print("/home/anhnguyen/driver/linux/drivers/dht11/dht11/"$$0) }' > /home/anhnguyen/driver/linux/drivers/dht11/dht11/dht11.mod
+savedcmd_/home/nguyenanh/git/linux/drivers/Kernel-Drivers/dht11/dht11.mod := printf '%s\n'   dht11.o | awk '!x[$$0]++ { print("/home/nguyenanh/git/linux/drivers/Kernel-Drivers/dht11/"$$0) }' > /home/nguyenanh/git/linux/drivers/Kernel-Drivers/dht11/dht11.mod
