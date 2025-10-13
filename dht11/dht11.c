@@ -14,10 +14,15 @@
 #include <linux/platform_device.h>
 #include <linux/cdev.h>
 #include <linux/pinctrl/consumer.h>
+#include <linux/hwmon.h>
+#include <linux/fs.h>
+#include <linux/stat.h> 
+#include <linux/device.h> 
 
 // TODO 
 // HWMON 
-// spinlock_t multiple process
+// devm_gpiod_get instead of gpio_request
+// IIO subsystem
 
 static DECLARE_WAIT_QUEUE_HEAD(dht11_gpio_wait_queue);
 
@@ -41,6 +46,12 @@ static struct sensor_datas {
     dev_t dev_num;
     uint16_t major;
     spinlock_t* op_lock;
+
+#ifdef CONFIG_HWMON
+    long temp;
+    long humid;
+    const struct attribute_group *attr_groups[1];
+#endif
 
     unsigned int gpio_p;
     unsigned int gpio_val;
@@ -66,6 +77,15 @@ static long dht11_etx_ioctl(struct file *file,
                             unsigned int cmd, 
                             unsigned long arg);
 static int dht11f_open(struct inode* inode, struct file* filep);
+
+#ifdef CONFIG_HWMON
+static ssize_t temp_input_show(struct device* dev, 
+                                     struct device_attribute* attr, 
+                                     char* buf);
+static ssize_t humidity_input_show(struct device* dev, 
+                                      struct device_attribute* attr, 
+                                      char* buf);
+#endif
 
 #define HUMID_VALUE     _IOR('W', 62, int32_t)
 #define TEMP_VALUE_C    _IOR('W', 63, int32_t)
@@ -185,6 +205,55 @@ static irqreturn_t dht11_interrupt_gpio_handler (int irq,
     return IRQ_HANDLED;
 }
 
+#ifdef CONFIG_HWMON
+
+static ssize_t temp_input_show(     struct device* dev, 
+                                    struct device_attribute* attr, 
+                                    char* buf) {
+    int ret;
+
+    struct sensor_datas* dev_data = dev_get_drvdata(dev);
+    dht11_init(dev_data);
+    dht11_read(dev_data);
+    ret = sprintf(buf, "%ld\n", dev_data->temp);
+
+    return ret;
+}
+
+// static DEVICE_ATTR_RO(temp_input);
+
+static ssize_t humidity_input_show( struct device* dev, 
+                                    struct device_attribute* attr, 
+                                    char* buf) 
+{
+    int ret;
+    
+    struct sensor_datas* dev_data = dev_get_drvdata(dev);
+    dht11_init(dev_data);
+    dht11_read(dev_data);
+    ret = sprintf(buf, "%ld\n", dev_data->humid);
+
+    return ret;
+}
+
+// static DEVICE_ATTR_RO(humidity_input);
+
+static DEVICE_ATTR(temp1_input, 0444, temp_input_show, 1);
+static DEVICE_ATTR(humidity1_input, 0444, humidity_input_show, 1);
+
+static struct attribute* dht11_attrs[] = {
+    &dev_attr_temp1_input.attr,
+    &dev_attr_humidity1_input.attr,
+    NULL,
+};
+
+static const struct attribute_group const dht11_group = {
+    .attrs = dht11_attrs,
+    NULL,
+};
+
+#endif
+
 static ssize_t dht11f_read(struct file *file, 
                            char __user *buffer, 
                            size_t count, loff_t *ppos) {
@@ -219,10 +288,32 @@ static int dht11_probe(struct platform_device* pdev) {
     int ret;
 
     dev_set_drvdata(&pdev->dev, &sensor_datas);
+    sensor_datas.dht11_device = &pdev->dev;
     dht11_set_context_running(pdev);
 
-    sensor_datas.dht11_pinctrl = devm_pinctrl_get(&pdev->dev);
+#ifdef CONFIG_HWMON
+    struct device* dev = &pdev->dev;
+    struct device* hwmon_dev;
 
+    sensor_datas.attr_groups[0] = &dht11_group;
+
+    hwmon_dev = devm_hwmon_device_register_with_groups(
+        dev, 
+        pdev->name, 
+        &sensor_datas,
+        sensor_datas.attr_groups
+    );
+
+    if (IS_ERR(hwmon_dev)) {
+        ret = PTR_ERR(hwmon_dev);
+        pr_err("Failed to register hwmon device: %d\n", ret);
+        goto err0;
+    }
+
+    pr_info("DHT11 hwmon device registered.\n");
+#endif
+
+    sensor_datas.dht11_pinctrl = devm_pinctrl_get(&pdev->dev);
     if(IS_ERR(sensor_datas.dht11_pinctrl)) {
         dev_err(&pdev->dev, "Failed to get pinctrl handler");
         ret = PTR_ERR(sensor_datas.dht11_pinctrl);
@@ -238,7 +329,6 @@ static int dht11_probe(struct platform_device* pdev) {
     }
 
     ret = pinctrl_select_state(sensor_datas.dht11_pinctrl, sensor_datas.pins_default);
-
     if(ret) {
         dev_err(&pdev->dev, "Failed to set default pin state");
         goto err2;
@@ -289,7 +379,7 @@ static int dht11_probe(struct platform_device* pdev) {
     pr_info("Device /dev/dht11_driver created successfully\n");
 
     sensor_datas.dht11_kobj = kobject_create_and_add("dht11", 
-                                                   sensor_datas.dht11_kobj); 
+                                                     sensor_datas.dht11_kobj); 
     if (!sensor_datas.dht11_kobj) {
         pr_info("Failed to create kobject");
         ret = -ENOMEM;
@@ -309,6 +399,7 @@ static int dht11_probe(struct platform_device* pdev) {
                            IRQF_TRIGGER_RISING | IRQF_TRIGGER_FALLING, 
                            pdev->name, pdev);
     
+    sensor_datas.op_lock = devm_kzalloc(&pdev->dev, sizeof(spinlock_t), GFP_KERNEL);
     spin_lock_init(sensor_datas.op_lock);
 
     return 0;
@@ -482,6 +573,11 @@ static int dht11_read(struct sensor_datas* dev_data) {
         pr_err("Error in data dht11\n");
         return 0;
     }
+
+#ifdef CONFIG_HWMON
+    dev_data->temp = dev_data->data[1];
+    dev_data->humid = dev_data->data[0];
+#endif
 
     return 1;
 }

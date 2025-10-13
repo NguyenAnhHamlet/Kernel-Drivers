@@ -26,6 +26,7 @@ __used __section("__versions") = {
 	{ 0xe095e43a, "device_destroy" },
 	{ 0x4a41ecb3, "class_destroy" },
 	{ 0x6091b333, "unregister_chrdev_region" },
+	{ 0x16d0c724, "devm_hwmon_device_register_with_groups" },
 	{ 0xb720d070, "devm_pinctrl_get" },
 	{ 0xc3663688, "pinctrl_lookup_state" },
 	{ 0x26248d71, "pinctrl_select_state" },
@@ -38,6 +39,7 @@ __used __section("__versions") = {
 	{ 0xad811a0a, "kobject_create_and_add" },
 	{ 0x47229b5c, "gpio_request" },
 	{ 0x11437cf9, "devm_request_threaded_irq" },
+	{ 0xfa61d21, "devm_kmalloc" },
 	{ 0xf810f451, "_dev_err" },
 	{ 0xa223bac6, "platform_driver_unregister" },
 	{ 0x13929d91, "gpio_to_desc" },
@@ -54,6 +56,7 @@ __used __section("__versions") = {
 	{ 0xc3055d20, "usleep_range_state" },
 	{ 0x54e5a03b, "gpiod_direction_input" },
 	{ 0xfcec0987, "enable_irq" },
+	{ 0x3c3ff9fd, "sprintf" },
 	{ 0x656e4a6e, "snprintf" },
 	{ 0x6cbbfc54, "__arch_copy_to_user" },
 	{ 0xb5b54b34, "_raw_spin_unlock" },
@@ -65,4 +68,4 @@ MODULE_INFO(depends, "");
 MODULE_ALIAS("of:N*T*Cdht11,sensor");
 MODULE_ALIAS("of:N*T*Cdht11,sensorC*");
 
-MODULE_INFO(srcversion, "DBEF8A3CD65A9FF6925B744");
+MODULE_INFO(srcversion, "66A80D5263D8ACD7C4CCAC9");

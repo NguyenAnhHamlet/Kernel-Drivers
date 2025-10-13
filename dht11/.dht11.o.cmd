@@ -3,6 +3,7 @@ savedcmd_/home/nguyenanh/git/linux/drivers/Kernel-Drivers/dht11/dht11.o :=  aarc
 source_/home/nguyenanh/git/linux/drivers/Kernel-Drivers/dht11/dht11.o := /home/nguyenanh/git/linux/drivers/Kernel-Drivers/dht11/dht11.c
 
 deps_/home/nguyenanh/git/linux/drivers/Kernel-Drivers/dht11/dht11.o := \
+    $(wildcard include/config/HWMON) \
   /usr/src/linux-headers-6.12.25+rpt-common-rpi/include/linux/compiler-version.h \
     $(wildcard include/config/CC_VERSION_TEXT) \
   /usr/src/linux-headers-6.12.25+rpt-common-rpi/include/linux/kconfig.h \
@@ -1411,6 +1412,7 @@ deps_/home/nguyenanh/git/linux/drivers/Kernel-Drivers/dht11/dht11.o := \
     $(wildcard include/config/SUPERH) \
   /usr/src/linux-headers-6.12.25+rpt-common-rpi/include/linux/cdev.h \
   /usr/src/linux-headers-6.12.25+rpt-common-rpi/include/linux/pinctrl/consumer.h \
+  /usr/src/linux-headers-6.12.25+rpt-common-rpi/include/linux/hwmon.h \
 
 /home/nguyenanh/git/linux/drivers/Kernel-Drivers/dht11/dht11.o: $(deps_/home/nguyenanh/git/linux/drivers/Kernel-Drivers/dht11/dht11.o)
 
